@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Engiwengi Switches</title>
+</head>
+<body>
+    <div id="down"></div>
+    <div id="up"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.0/Chart.bundle.min.js"></script>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/4.3.6/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.4/lodash.min.js"></script>
+    <script>
+        const csvFiles = [
+            'data/Gateron_Black.csv',
+            'data/Gateron_Clear.csv',
+            'data/Holy_Greilh_Black.csv',
+            'data/Kailh_Pro_Burgundy.csv',
+            'data/Kailh_Pro_Purple.csv'
+        ];
+
+        function getLabel(url) {
+            const urlSegments = url.split('/');
+            const fileName = _.last(urlSegments);
+            const fileNameSegments = fileName.split('.');
+
+            return _.first(fileNameSegments).replace(/_/g, ' ');
+        }
+
+        function findPivotIndex(data) {
+            for (let i = 0; i < data.length - 1; i++) {
+                const a = _.first(data[i]);
+                const b = _.first(data[i + 1]);
+
+                if (b < a) {
+                    return i + 1;
+                }
+            }
+
+            return null;
+        }
+
+        function datumToTuple(datum) {
+            return [datum.Extension, datum.Load];
+        }
+
+        Promise.all(csvFiles.map(url => fetch(url).then(res => res.text())))
+            .then(csvStringArray => csvStringArray.map(csvString => Papa.parse(csvString, {
+                header: true,
+                dynamicTyping: true,
+            }))).then(csvData => {
+                const datasetLabels = csvFiles.map(getLabel);
+
+                // map data
+                const mappedData = csvData.map((csv, i) => {
+                    const name = datasetLabels[i];
+                    const data = csv.data.map(datumToTuple);
+                    const pivot = findPivotIndex(data);
+
+                    return {
+                        down: {
+                            name,
+                            data: data.slice(0, pivot),
+                        },
+                        up: {
+                            name,
+                            data: data.slice(pivot),
+                        },
+                    }
+                }).reduce((result, data) => {
+                    _.set(result, 'down', [...result.down, data.down]);
+                    _.set(result, 'up', [...result.up, data.up]);
+
+                    return result;
+                }, {
+                    down: [],
+                    up: [],
+                });
+
+                const renderChart = direction => Highcharts.chart(direction, {
+                    chart: {
+                        type: 'line',
+                        width: 1600,
+                        height: 800,
+                    },
+
+                    title: {
+                        text: `Switch Force vs Extension (${direction})`
+                    },
+
+                    xAxis: {
+                        title: {
+                            text: 'Extension (mm)'
+                        },
+                        reversed: direction === 'up',
+                    },
+
+                    yAxis: {
+                        title: {
+                            text: 'Force (force-grams)'
+                        }
+                    },
+
+                    series: _.get(mappedData, direction),
+
+                    plotOptions: {
+                        series: {
+                            lineWidth: 1
+                        }
+                    }
+                });
+
+                renderChart('down');
+                renderChart('up');
+            });
+    </script>
+</body>
+</html>
